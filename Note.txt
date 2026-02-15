@@ -1,0 +1,7 @@
+https://www.kimi.com/chat/19c1bb39-5f92-870f-8000-096595c079e1
+https://chatgpt.com/share/6987da18-0e34-8010-86f7-396894db1d18
+
+
+postgre 
+uname postgres
+psw 1234
