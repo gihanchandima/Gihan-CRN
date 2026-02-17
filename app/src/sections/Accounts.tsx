@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { gsap } from 'gsap';
 import { 
   Building2, 
@@ -38,12 +38,28 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { useCRM } from '@/contexts/CRMContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function Accounts() {
   const sectionRef = useRef<HTMLDivElement>(null);
-  const { accounts, contacts, deals, deleteAccount } = useCRM();
+  const { user } = useAuth();
+  const { accounts, contacts, deals, addAccount, deleteAccount } = useCRM();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSize, setFilterSize] = useState<'all' | 'small' | 'medium' | 'enterprise'>('all');
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [formData, setFormData] = useState({
+    companyName: '',
+    industry: '',
+    size: '' as '' | 'small' | 'medium' | 'enterprise',
+    website: '',
+    phone: '',
+    street: '',
+    city: '',
+    state: '',
+    zip: '',
+    country: '',
+  });
 
   useEffect(() => {
     if (!sectionRef.current) return;
@@ -85,6 +101,63 @@ export default function Accounts() {
     }
   };
 
+  const resetForm = () => {
+    setFormData({
+      companyName: '',
+      industry: '',
+      size: '',
+      website: '',
+      phone: '',
+      street: '',
+      city: '',
+      state: '',
+      zip: '',
+      country: '',
+    });
+    setFormError('');
+  };
+
+  const normalizeWebsite = (website: string) => {
+    const value = website.trim();
+    if (!value) return undefined;
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
+    }
+    return `https://${value}`;
+  };
+
+  const handleCreateAccount = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const companyName = formData.companyName.trim();
+    if (!companyName) {
+      setFormError('Company name is required.');
+      return;
+    }
+
+    const addressFields = {
+      street: formData.street.trim(),
+      city: formData.city.trim(),
+      state: formData.state.trim(),
+      zip: formData.zip.trim(),
+      country: formData.country.trim(),
+    };
+
+    const hasAddress = Object.values(addressFields).some(Boolean);
+
+    addAccount({
+      companyName,
+      industry: formData.industry.trim() || undefined,
+      size: formData.size || undefined,
+      website: normalizeWebsite(formData.website),
+      phone: formData.phone.trim() || undefined,
+      address: hasAddress ? addressFields : undefined,
+      ownerId: user?.uid ?? 'user-1',
+    });
+
+    resetForm();
+    setIsCreateDialogOpen(false);
+  };
+
   return (
     <div ref={sectionRef} className="p-6 space-y-6" style={{ opacity: 0 }}>
       {/* Header */}
@@ -98,7 +171,13 @@ export default function Accounts() {
             <p className="text-gray-500 mt-1">Manage your customer accounts</p>
           </div>
         </div>
-        <Dialog>
+        <Dialog
+          open={isCreateDialogOpen}
+          onOpenChange={(open) => {
+            setIsCreateDialogOpen(open);
+            if (!open) resetForm();
+          }}
+        >
           <DialogTrigger asChild>
             <Button className="bg-blue-600 hover:bg-blue-700 gap-2">
               <Plus className="w-4 h-4" />
@@ -107,11 +186,110 @@ export default function Accounts() {
           </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Add New Account</DialogTitle>
+              <DialogTitle>Create Account Master</DialogTitle>
             </DialogHeader>
-            <div className="p-4 text-center text-gray-500">
-              Account creation form coming soon...
-            </div>
+            <form onSubmit={handleCreateAccount} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Company Name *</label>
+                  <Input
+                    value={formData.companyName}
+                    onChange={(e) => setFormData(prev => ({ ...prev, companyName: e.target.value }))}
+                    placeholder="Acme Inc."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Industry</label>
+                  <Input
+                    value={formData.industry}
+                    onChange={(e) => setFormData(prev => ({ ...prev, industry: e.target.value }))}
+                    placeholder="Technology"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Size</label>
+                  <select
+                    value={formData.size}
+                    onChange={(e) => setFormData(prev => ({ ...prev, size: e.target.value as '' | 'small' | 'medium' | 'enterprise' }))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="">Select size</option>
+                    <option value="small">Small</option>
+                    <option value="medium">Medium</option>
+                    <option value="enterprise">Enterprise</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
+                  <Input
+                    value={formData.website}
+                    onChange={(e) => setFormData(prev => ({ ...prev, website: e.target.value }))}
+                    placeholder="acme.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                  <Input
+                    value={formData.phone}
+                    onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                    placeholder="+1 555 123 4567"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Street</label>
+                  <Input
+                    value={formData.street}
+                    onChange={(e) => setFormData(prev => ({ ...prev, street: e.target.value }))}
+                    placeholder="123 Main St"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                  <Input
+                    value={formData.city}
+                    onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
+                    placeholder="New York"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                  <Input
+                    value={formData.state}
+                    onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
+                    placeholder="NY"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ZIP</label>
+                  <Input
+                    value={formData.zip}
+                    onChange={(e) => setFormData(prev => ({ ...prev, zip: e.target.value }))}
+                    placeholder="10001"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                  <Input
+                    value={formData.country}
+                    onChange={(e) => setFormData(prev => ({ ...prev, country: e.target.value }))}
+                    placeholder="USA"
+                  />
+                </div>
+              </div>
+
+              {formError && (
+                <p className="text-sm text-red-600">{formError}</p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
+                  Create Account
+                </Button>
+              </div>
+            </form>
           </DialogContent>
         </Dialog>
       </div>
