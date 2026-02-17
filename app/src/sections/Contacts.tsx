@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { gsap } from 'gsap';
 import { 
   Users, 
@@ -38,11 +38,22 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { useCRM } from '@/contexts/CRMContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function Contacts() {
   const sectionRef = useRef<HTMLDivElement>(null);
-  const { contacts, accounts, deleteContact } = useCRM();
+  const { user } = useAuth();
+  const { contacts, accounts, addContact, deleteContact } = useCRM();
   const [searchQuery, setSearchQuery] = useState('');
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    title: '',
+    accountId: '',
+  });
 
   useEffect(() => {
     if (!sectionRef.current) return;
@@ -66,6 +77,46 @@ export default function Contacts() {
     return accounts.find(a => a.accountId === accountId)?.companyName;
   };
 
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      email: '',
+      phone: '',
+      title: '',
+      accountId: '',
+    });
+    setFormError('');
+  };
+
+  const handleCreateContact = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    const name = formData.name.trim();
+    const email = formData.email.trim();
+
+    if (!name) {
+      setFormError('Name is required.');
+      return;
+    }
+
+    if (!email) {
+      setFormError('Email is required.');
+      return;
+    }
+
+    addContact({
+      name,
+      email,
+      phone: formData.phone.trim() || undefined,
+      title: formData.title.trim() || undefined,
+      accountId: formData.accountId || undefined,
+      assignedTo: user?.uid ?? 'user-1',
+    });
+
+    resetForm();
+    setIsCreateDialogOpen(false);
+  };
+
   return (
     <div ref={sectionRef} className="p-6 space-y-6" style={{ opacity: 0 }}>
       {/* Header */}
@@ -79,7 +130,13 @@ export default function Contacts() {
             <p className="text-gray-500 mt-1">Manage your contacts and relationships</p>
           </div>
         </div>
-        <Dialog>
+        <Dialog
+          open={isCreateDialogOpen}
+          onOpenChange={(open) => {
+            setIsCreateDialogOpen(open);
+            if (!open) resetForm();
+          }}
+        >
           <DialogTrigger asChild>
             <Button className="bg-purple-600 hover:bg-purple-700 gap-2">
               <Plus className="w-4 h-4" />
@@ -88,11 +145,73 @@ export default function Contacts() {
           </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Add New Contact</DialogTitle>
+              <DialogTitle>Create Contact Master</DialogTitle>
             </DialogHeader>
-            <div className="p-4 text-center text-gray-500">
-              Contact creation form coming soon...
-            </div>
+            <form onSubmit={handleCreateContact} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                  <Input
+                    value={formData.name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="John Doe"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                  <Input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                    placeholder="john@example.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                  <Input
+                    value={formData.phone}
+                    onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                    placeholder="+1 555 123 4567"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                  <Input
+                    value={formData.title}
+                    onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                    placeholder="Sales Manager"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Linked Account</label>
+                  <select
+                    value={formData.accountId}
+                    onChange={(e) => setFormData(prev => ({ ...prev, accountId: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-100"
+                  >
+                    <option value="">No account</option>
+                    {accounts.map((account) => (
+                      <option key={account.accountId} value={account.accountId}>
+                        {account.companyName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {formError && (
+                <p className="text-sm text-red-600">{formError}</p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" className="bg-purple-600 hover:bg-purple-700">
+                  Create Contact
+                </Button>
+              </div>
+            </form>
           </DialogContent>
         </Dialog>
       </div>
