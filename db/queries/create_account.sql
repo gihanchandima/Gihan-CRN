@@ -19,7 +19,7 @@ INSERT INTO accounts (
   industry,
   size,
   website,
-  phone,
+  phone,install
   street,
   city,
   state,
