@@ -31,7 +31,7 @@ interface CRMContextType {
   updateContact: (contactId: string, updates: Partial<Contact>) => void;
   deleteContact: (contactId: string) => void;
   
-  addAccount: (account: Omit<Account, 'accountId' | 'createdAt' | 'updatedAt'>) => void;
+  addAccount: (account: Omit<Account, 'accountId' | 'createdAt' | 'updatedAt'> & Partial<Pick<Account, 'accountId' | 'createdAt' | 'updatedAt'>>) => void;
   updateAccount: (accountId: string, updates: Partial<Account>) => void;
   deleteAccount: (accountId: string) => void;
   
@@ -112,12 +112,12 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Account Actions
-  const addAccount = useCallback((account: Omit<Account, 'accountId' | 'createdAt' | 'updatedAt'>) => {
+  const addAccount = useCallback((account: Omit<Account, 'accountId' | 'createdAt' | 'updatedAt'> & Partial<Pick<Account, 'accountId' | 'createdAt' | 'updatedAt'>>) => {
     const newAccount: Account = {
       ...account,
-      accountId: `account-${Date.now()}`,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      accountId: account.accountId ?? `account-${Date.now()}`,
+      createdAt: account.createdAt ?? new Date(),
+      updatedAt: account.updatedAt ?? new Date(),
     };
     setAccounts(prev => [newAccount, ...prev]);
   }, []);

@@ -48,6 +48,7 @@ export default function Accounts() {
   const [filterSize, setFilterSize] = useState<'all' | 'small' | 'medium' | 'enterprise'>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [formError, setFormError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     companyName: '',
     industry: '',
@@ -126,8 +127,9 @@ export default function Accounts() {
     return `https://${value}`;
   };
 
-  const handleCreateAccount = (e: FormEvent<HTMLFormElement>) => {
+  const handleCreateAccount = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (isSubmitting) return;
     const companyName = formData.companyName.trim();
     if (!companyName) {
       setFormError('Company name is required.');
@@ -142,20 +144,83 @@ export default function Accounts() {
       country: formData.country.trim(),
     };
 
-    const hasAddress = Object.values(addressFields).some(Boolean);
+    setFormError('');
+    setIsSubmitting(true);
 
-    addAccount({
+    const payload = {
       companyName,
       industry: formData.industry.trim() || undefined,
       size: formData.size || undefined,
       website: normalizeWebsite(formData.website),
       phone: formData.phone.trim() || undefined,
-      address: hasAddress ? addressFields : undefined,
+      ...addressFields,
       ownerId: user?.uid ?? 'user-1',
-    });
+    };
 
-    resetForm();
-    setIsCreateDialogOpen(false);
+    try {
+      const apiUrl = import.meta.env.VITE_ACCOUNTS_API_URL || '/.netlify/functions/create-account';
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result?.ok || !result?.account) {
+        throw new Error(result?.error || 'Failed to save account.');
+      }
+
+      const createdAccount = result.account as {
+        accountId: string;
+        companyName: string;
+        industry?: string;
+        size?: 'small' | 'medium' | 'enterprise';
+        website?: string;
+        phone?: string;
+        street?: string;
+        city?: string;
+        state?: string;
+        zip?: string;
+        country?: string;
+        ownerId: string;
+        createdAt: string;
+        updatedAt: string;
+      };
+
+      const address = [createdAccount.street, createdAccount.city, createdAccount.state, createdAccount.zip, createdAccount.country]
+        .some(Boolean)
+        ? {
+            street: createdAccount.street,
+            city: createdAccount.city,
+            state: createdAccount.state,
+            zip: createdAccount.zip,
+            country: createdAccount.country,
+          }
+        : undefined;
+
+      addAccount({
+        accountId: createdAccount.accountId,
+        companyName: createdAccount.companyName,
+        industry: createdAccount.industry,
+        size: createdAccount.size,
+        website: createdAccount.website,
+        phone: createdAccount.phone,
+        address,
+        ownerId: createdAccount.ownerId,
+        createdAt: new Date(createdAccount.createdAt),
+        updatedAt: new Date(createdAccount.updatedAt),
+      });
+
+      resetForm();
+      setIsCreateDialogOpen(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save account.';
+      setFormError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -285,8 +350,8 @@ export default function Accounts() {
                 <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
-                  Create Account
+                <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isSubmitting}>
+                  {isSubmitting ? 'Saving...' : 'Create Account'}
                 </Button>
               </div>
             </form>
