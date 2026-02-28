@@ -167,12 +167,36 @@ export default function Accounts() {
         body: JSON.stringify(payload),
       });
 
-      const result = await response.json();
-      if (!response.ok || !result?.ok || !result?.account) {
-        throw new Error(result?.error || 'Failed to save account.');
+      const raw = await response.text();
+      let result: unknown = null;
+      try {
+        result = raw ? JSON.parse(raw) : null;
+      } catch (_error) {
+        result = null;
       }
 
-      const createdAccount = result.account as {
+      if (!response.ok) {
+        const message =
+          typeof result === 'object' &&
+          result !== null &&
+          'error' in result &&
+          typeof (result as { error?: unknown }).error === 'string'
+            ? (result as { error: string }).error
+            : `Failed to save account (HTTP ${response.status}).`;
+        throw new Error(message);
+      }
+
+      if (
+        typeof result !== 'object' ||
+        result === null ||
+        !('ok' in result) ||
+        !(result as { ok?: boolean }).ok ||
+        !('account' in result)
+      ) {
+        throw new Error('Account API returned an invalid response.');
+      }
+
+      const createdAccount = (result as { account: unknown }).account as {
         accountId: string;
         companyName: string;
         industry?: string;
