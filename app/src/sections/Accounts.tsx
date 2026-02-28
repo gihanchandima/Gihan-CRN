@@ -127,6 +127,8 @@ export default function Accounts() {
     return `https://${value}`;
   };
 
+  const buildAccountId = () => `ACC-${Date.now().toString(36).toUpperCase()}`;
+
   const handleCreateAccount = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (isSubmitting) return;
@@ -158,14 +160,51 @@ export default function Accounts() {
     };
 
     try {
-      const apiUrl = import.meta.env.VITE_ACCOUNTS_API_URL || '/.netlify/functions/create-account';
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+      const configuredApiUrl = import.meta.env.VITE_ACCOUNTS_API_URL?.trim();
+      const isNeonRest = Boolean(configuredApiUrl && configuredApiUrl.includes('/rest/v1'));
+      const apiUrl = isNeonRest
+        ? `${configuredApiUrl!.replace(/\/$/, '')}/accounts`
+        : configuredApiUrl || '/.netlify/functions/create-account';
+
+      let response: Response;
+      if (isNeonRest) {
+        const neonApiKey = import.meta.env.VITE_NEON_API_KEY?.trim();
+        if (!neonApiKey) {
+          throw new Error('VITE_NEON_API_KEY is required for Neon REST API.');
+        }
+
+        response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: neonApiKey,
+            Authorization: `Bearer ${neonApiKey}`,
+            Prefer: 'return=representation',
+          },
+          body: JSON.stringify({
+            account_id: buildAccountId(),
+            company_name: payload.companyName,
+            industry: payload.industry ?? null,
+            size: payload.size ?? null,
+            website: payload.website ?? null,
+            phone: payload.phone ?? null,
+            street: payload.street || null,
+            city: payload.city || null,
+            state: payload.state || null,
+            zip: payload.zip || null,
+            country: payload.country || null,
+            owner_id: payload.ownerId,
+          }),
+        });
+      } else {
+        response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+      }
 
       const raw = await response.text();
       let result: unknown = null;
@@ -186,7 +225,11 @@ export default function Accounts() {
         throw new Error(message);
       }
 
-      if (
+      if (isNeonRest) {
+        if (!Array.isArray(result) || result.length === 0) {
+          throw new Error('Neon REST API returned an invalid response.');
+        }
+      } else if (
         typeof result !== 'object' ||
         result === null ||
         !('ok' in result) ||
@@ -196,7 +239,27 @@ export default function Accounts() {
         throw new Error('Account API returned an invalid response.');
       }
 
-      const createdAccount = (result as { account: unknown }).account as {
+      const createdAccount = isNeonRest
+        ? (() => {
+            const row = (result as Array<Record<string, unknown>>)[0];
+            return {
+              accountId: String(row.account_id),
+              companyName: String(row.company_name),
+              industry: (row.industry as string | null) ?? undefined,
+              size: (row.size as 'small' | 'medium' | 'enterprise' | null) ?? undefined,
+              website: (row.website as string | null) ?? undefined,
+              phone: (row.phone as string | null) ?? undefined,
+              street: (row.street as string | null) ?? undefined,
+              city: (row.city as string | null) ?? undefined,
+              state: (row.state as string | null) ?? undefined,
+              zip: (row.zip as string | null) ?? undefined,
+              country: (row.country as string | null) ?? undefined,
+              ownerId: String(row.owner_id),
+              createdAt: String(row.created_at),
+              updatedAt: String(row.updated_at),
+            };
+          })()
+        : ((result as { account: unknown }).account as {
         accountId: string;
         companyName: string;
         industry?: string;
@@ -211,7 +274,7 @@ export default function Accounts() {
         ownerId: string;
         createdAt: string;
         updatedAt: string;
-      };
+      });
 
       const address = [createdAccount.street, createdAccount.city, createdAccount.state, createdAccount.zip, createdAccount.country]
         .some(Boolean)
