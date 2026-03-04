@@ -5,3 +5,7 @@ https://chatgpt.com/share/6987da18-0e34-8010-86f7-396894db1d18
 postgre 
 uname postgres
 psw 1234
+
+
+API KEY  napi_s75otv94wdz207gumkf96ssmcrcp91fxpxvqgf8g7zwvu9dd1j05q7kxfchl7rg1
+napi_s75otv94wdz207gumkf96ssmcrcp91fxpxvqgf8g7zwvu9dd1j05q7kxfchl7rg1
