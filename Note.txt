@@ -9,3 +9,10 @@ psw 1234
 
 API KEY  napi_s75otv94wdz207gumkf96ssmcrcp91fxpxvqgf8g7zwvu9dd1j05q7kxfchl7rg1
 napi_s75otv94wdz207gumkf96ssmcrcp91fxpxvqgf8g7zwvu9dd1j05q7kxfchl7rg1
+
+
+psql 'postgresql://neondb_owner:npg_skDQAiUWLC20@ep-delicate-dawn-aiespe48-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
+       "postgresql://neondb_owner:npg_eDrJOdh42oCN@ep-polished-cherry-aic381fr-pooler.c-4.us-east-1.aws.neon.tech/Gihan_CRM?sslmode=require&channel_binding=require"
+
+
+https://ep-delicate-dawn-aiespe48.apirest.c-4.us-east-1.aws.neon.tech/neondb/rest/v1
