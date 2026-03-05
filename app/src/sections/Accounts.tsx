@@ -159,7 +159,9 @@ export default function Accounts() {
 
     try {
       const configuredApiUrl = import.meta.env.VITE_ACCOUNTS_API_URL?.trim();
-      const apiUrl = configuredApiUrl || '/.netlify/functions/create-account';
+      const apiUrl = configuredApiUrl && !configuredApiUrl.includes('/rest/v1')
+        ? configuredApiUrl
+        : '/.netlify/functions/create-account';
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
