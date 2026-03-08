@@ -4,7 +4,7 @@ import type {
   AIInsight, Notification, Workflow, DashboardMetrics 
 } from '@/types';
 import { 
-  mockLeads, mockContacts, mockAccounts, mockDeals, 
+  mockLeads, mockAccounts, mockDeals, 
   mockTasks, mockActivities, mockAIInsights, 
   mockNotifications, mockWorkflows, mockDashboardMetrics 
 } from '@/data/mockData';
@@ -55,7 +55,7 @@ const CRMContext = createContext<CRMContextType | undefined>(undefined);
 
 export function CRMProvider({ children }: { children: React.ReactNode }) {
   const [leads, setLeads] = useState<Lead[]>(mockLeads);
-  const [contacts, setContacts] = useState<Contact[]>(mockContacts);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [accounts, setAccounts] = useState<Account[]>(mockAccounts);
   const [deals, setDeals] = useState<Deal[]>(mockDeals);
   const [tasks, setTasks] = useState<Task[]>(mockTasks);
