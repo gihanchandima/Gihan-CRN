@@ -43,13 +43,29 @@ import { useAuth } from '@/contexts/AuthContext';
 export default function Accounts() {
   const sectionRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
-  const { accounts, contacts, deals, addAccount, deleteAccount } = useCRM();
+  const { accounts, contacts, deals, addAccount, updateAccount, deleteAccount } = useCRM();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSize, setFilterSize] = useState<'all' | 'small' | 'medium' | 'enterprise'>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+  const [editFormError, setEditFormError] = useState('');
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const [formData, setFormData] = useState({
+    companyName: '',
+    industry: '',
+    size: '' as '' | 'small' | 'medium' | 'enterprise',
+    website: '',
+    phone: '',
+    street: '',
+    city: '',
+    state: '',
+    zip: '',
+    country: '',
+  });
+  const [editFormData, setEditFormData] = useState({
     companyName: '',
     industry: '',
     size: '' as '' | 'small' | 'medium' | 'enterprise',
@@ -127,6 +143,38 @@ export default function Accounts() {
     return `https://${value}`;
   };
 
+  const resolveAccountApiUrl = (action: 'create' | 'update') => {
+    const configuredApiUrl = import.meta.env.VITE_ACCOUNTS_API_URL?.trim();
+    if (!configuredApiUrl || configuredApiUrl.includes('/rest/v1')) {
+      return action === 'create'
+        ? '/.netlify/functions/create-account'
+        : '/.netlify/functions/update-account';
+    }
+
+    if (action === 'update') {
+      return configuredApiUrl.replace(/\/create-account$/, '/update-account');
+    }
+    return configuredApiUrl;
+  };
+
+  const openEditDialog = (account: typeof accounts[number]) => {
+    setEditingAccountId(account.accountId);
+    setEditFormData({
+      companyName: account.companyName,
+      industry: account.industry || '',
+      size: account.size || '',
+      website: account.website || '',
+      phone: account.phone || '',
+      street: account.address?.street || '',
+      city: account.address?.city || '',
+      state: account.address?.state || '',
+      zip: account.address?.zip || '',
+      country: account.address?.country || '',
+    });
+    setEditFormError('');
+    setIsEditDialogOpen(true);
+  };
+
   const handleCreateAccount = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (isSubmitting) return;
@@ -158,10 +206,7 @@ export default function Accounts() {
     };
 
     try {
-      const configuredApiUrl = import.meta.env.VITE_ACCOUNTS_API_URL?.trim();
-      const apiUrl = configuredApiUrl && !configuredApiUrl.includes('/rest/v1')
-        ? configuredApiUrl
-        : '/.netlify/functions/create-account';
+      const apiUrl = resolveAccountApiUrl('create');
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -247,6 +292,121 @@ export default function Accounts() {
       setFormError(message);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdateAccount = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (isEditSubmitting || !editingAccountId) return;
+
+    const companyName = editFormData.companyName.trim();
+    if (!companyName) {
+      setEditFormError('Company name is required.');
+      return;
+    }
+
+    setEditFormError('');
+    setIsEditSubmitting(true);
+
+    const payload = {
+      accountId: editingAccountId,
+      companyName,
+      industry: editFormData.industry.trim() || undefined,
+      size: editFormData.size || undefined,
+      website: normalizeWebsite(editFormData.website),
+      phone: editFormData.phone.trim() || undefined,
+      street: editFormData.street.trim() || undefined,
+      city: editFormData.city.trim() || undefined,
+      state: editFormData.state.trim() || undefined,
+      zip: editFormData.zip.trim() || undefined,
+      country: editFormData.country.trim() || undefined,
+      ownerId: user?.uid?.trim() || 'user-1',
+    };
+
+    try {
+      const response = await fetch(resolveAccountApiUrl('update'), {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const raw = await response.text();
+      let result: unknown = null;
+      try {
+        result = raw ? JSON.parse(raw) : null;
+      } catch (_error) {
+        result = null;
+      }
+
+      if (!response.ok) {
+        const message =
+          typeof result === 'object' &&
+          result !== null &&
+          (('error' in result && typeof (result as { error?: unknown }).error === 'string') ||
+            ('message' in result && typeof (result as { message?: unknown }).message === 'string'))
+            ? String((result as { error?: string; message?: string }).error || (result as { message?: string }).message)
+            : `Failed to update account (HTTP ${response.status}).`;
+        throw new Error(message);
+      }
+
+      if (
+        typeof result !== 'object' ||
+        result === null ||
+        !('ok' in result) ||
+        !(result as { ok?: boolean }).ok ||
+        !('account' in result)
+      ) {
+        throw new Error('Account API returned an invalid response.');
+      }
+
+      const updatedAccount = (result as { account: unknown }).account as {
+        accountId: string;
+        companyName: string;
+        industry?: string;
+        size?: 'small' | 'medium' | 'enterprise';
+        website?: string;
+        phone?: string;
+        street?: string;
+        city?: string;
+        state?: string;
+        zip?: string;
+        country?: string;
+        ownerId: string;
+        createdAt: string;
+        updatedAt: string;
+      };
+
+      const address = [updatedAccount.street, updatedAccount.city, updatedAccount.state, updatedAccount.zip, updatedAccount.country]
+        .some(Boolean)
+        ? {
+            street: updatedAccount.street,
+            city: updatedAccount.city,
+            state: updatedAccount.state,
+            zip: updatedAccount.zip,
+            country: updatedAccount.country,
+          }
+        : undefined;
+
+      updateAccount(updatedAccount.accountId, {
+        companyName: updatedAccount.companyName,
+        industry: updatedAccount.industry,
+        size: updatedAccount.size,
+        website: updatedAccount.website,
+        phone: updatedAccount.phone,
+        address,
+        ownerId: updatedAccount.ownerId,
+        updatedAt: new Date(updatedAccount.updatedAt),
+      });
+
+      setIsEditDialogOpen(false);
+      setEditingAccountId(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update account.';
+      setEditFormError(message);
+    } finally {
+      setIsEditSubmitting(false);
     }
   };
 
@@ -379,6 +539,124 @@ export default function Accounts() {
                 </Button>
                 <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isSubmitting}>
                   {isSubmitting ? 'Saving...' : 'Create Account'}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+        <Dialog
+          open={isEditDialogOpen}
+          onOpenChange={(open) => {
+            setIsEditDialogOpen(open);
+            if (!open) {
+              setEditFormError('');
+              setEditingAccountId(null);
+            }
+          }}
+        >
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Edit Account Master</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleUpdateAccount} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Company Name *</label>
+                  <Input
+                    value={editFormData.companyName}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, companyName: e.target.value }))}
+                    placeholder="Acme Inc."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Industry</label>
+                  <Input
+                    value={editFormData.industry}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, industry: e.target.value }))}
+                    placeholder="Technology"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Size</label>
+                  <select
+                    value={editFormData.size}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, size: e.target.value as '' | 'small' | 'medium' | 'enterprise' }))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="">Select size</option>
+                    <option value="small">Small</option>
+                    <option value="medium">Medium</option>
+                    <option value="enterprise">Enterprise</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
+                  <Input
+                    value={editFormData.website}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, website: e.target.value }))}
+                    placeholder="acme.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                  <Input
+                    value={editFormData.phone}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, phone: e.target.value }))}
+                    placeholder="+1 555 123 4567"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Street</label>
+                  <Input
+                    value={editFormData.street}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, street: e.target.value }))}
+                    placeholder="123 Main St"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                  <Input
+                    value={editFormData.city}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, city: e.target.value }))}
+                    placeholder="New York"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                  <Input
+                    value={editFormData.state}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, state: e.target.value }))}
+                    placeholder="NY"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ZIP</label>
+                  <Input
+                    value={editFormData.zip}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, zip: e.target.value }))}
+                    placeholder="10001"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                  <Input
+                    value={editFormData.country}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, country: e.target.value }))}
+                    placeholder="USA"
+                  />
+                </div>
+              </div>
+
+              {editFormError && (
+                <p className="text-sm text-red-600">{editFormError}</p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isEditSubmitting}>
+                  {isEditSubmitting ? 'Saving...' : 'Save Changes'}
                 </Button>
               </div>
             </form>
@@ -526,7 +804,7 @@ export default function Accounts() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem className="gap-2">
+                        <DropdownMenuItem className="gap-2" onClick={() => openEditDialog(account)}>
                           <Edit className="w-4 h-4" />
                           Edit
                         </DropdownMenuItem>
