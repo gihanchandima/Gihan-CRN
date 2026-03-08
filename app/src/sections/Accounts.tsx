@@ -9,6 +9,7 @@ import {
   Globe,
   Users,
   TrendingUp,
+  Eye,
   Edit,
   Trash2
 } from 'lucide-react';
@@ -48,11 +49,15 @@ export default function Accounts() {
   const [filterSize, setFilterSize] = useState<'all' | 'small' | 'medium' | 'enterprise'>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
   const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [editFormError, setEditFormError] = useState('');
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
+  const [selectedAccount, setSelectedAccount] = useState<(typeof accounts)[number] | null>(null);
   const [formData, setFormData] = useState({
     companyName: '',
     industry: '',
@@ -143,16 +148,19 @@ export default function Accounts() {
     return `https://${value}`;
   };
 
-  const resolveAccountApiUrl = (action: 'create' | 'update') => {
+  const resolveAccountApiUrl = (action: 'create' | 'update' | 'delete') => {
     const configuredApiUrl = import.meta.env.VITE_ACCOUNTS_API_URL?.trim();
     if (!configuredApiUrl || configuredApiUrl.includes('/rest/v1')) {
-      return action === 'create'
-        ? '/.netlify/functions/create-account'
-        : '/.netlify/functions/update-account';
+      if (action === 'update') return '/.netlify/functions/update-account';
+      if (action === 'delete') return '/.netlify/functions/delete-account';
+      return '/.netlify/functions/create-account';
     }
 
     if (action === 'update') {
       return configuredApiUrl.replace(/\/create-account$/, '/update-account');
+    }
+    if (action === 'delete') {
+      return configuredApiUrl.replace(/\/create-account$/, '/delete-account');
     }
     return configuredApiUrl;
   };
@@ -173,6 +181,12 @@ export default function Accounts() {
     });
     setEditFormError('');
     setIsEditDialogOpen(true);
+  };
+
+  const openDetailsDialog = (account: typeof accounts[number]) => {
+    setSelectedAccount(account);
+    setActionError('');
+    setIsDetailsDialogOpen(true);
   };
 
   const handleCreateAccount = async (e: FormEvent<HTMLFormElement>) => {
@@ -410,6 +424,55 @@ export default function Accounts() {
     }
   };
 
+  const handleDeleteAccount = async (account: typeof accounts[number]) => {
+    if (deletingAccountId) return;
+    const shouldDelete = window.confirm(`Delete account "${account.companyName}"?`);
+    if (!shouldDelete) return;
+
+    setActionError('');
+    setDeletingAccountId(account.accountId);
+
+    try {
+      const response = await fetch(resolveAccountApiUrl('delete'), {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ accountId: account.accountId }),
+      });
+
+      const raw = await response.text();
+      let result: unknown = null;
+      try {
+        result = raw ? JSON.parse(raw) : null;
+      } catch (_error) {
+        result = null;
+      }
+
+      if (!response.ok) {
+        const message =
+          typeof result === 'object' &&
+          result !== null &&
+          (('error' in result && typeof (result as { error?: unknown }).error === 'string') ||
+            ('message' in result && typeof (result as { message?: unknown }).message === 'string'))
+            ? String((result as { error?: string; message?: string }).error || (result as { message?: string }).message)
+            : `Failed to delete account (HTTP ${response.status}).`;
+        throw new Error(message);
+      }
+
+      deleteAccount(account.accountId);
+      if (selectedAccount?.accountId === account.accountId) {
+        setIsDetailsDialogOpen(false);
+        setSelectedAccount(null);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to delete account.';
+      setActionError(message);
+    } finally {
+      setDeletingAccountId(null);
+    }
+  };
+
   return (
     <div ref={sectionRef} className="p-6 space-y-6" style={{ opacity: 0 }}>
       {/* Header */}
@@ -542,6 +605,79 @@ export default function Accounts() {
                 </Button>
               </div>
             </form>
+          </DialogContent>
+        </Dialog>
+        <Dialog
+          open={isDetailsDialogOpen}
+          onOpenChange={(open) => {
+            setIsDetailsDialogOpen(open);
+            if (!open) setSelectedAccount(null);
+          }}
+        >
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Account Details</DialogTitle>
+            </DialogHeader>
+            {selectedAccount && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-500">Company</p>
+                    <p className="font-medium text-gray-900">{selectedAccount.companyName}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Industry</p>
+                    <p className="font-medium text-gray-900">{selectedAccount.industry || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Size</p>
+                    <p className="font-medium text-gray-900 capitalize">{selectedAccount.size || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Owner</p>
+                    <p className="font-medium text-gray-900">{selectedAccount.ownerId}</p>
+                  </div>
+                  <div className="md:col-span-2">
+                    <p className="text-gray-500">Website</p>
+                    <p className="font-medium text-gray-900">{selectedAccount.website || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Phone</p>
+                    <p className="font-medium text-gray-900">{selectedAccount.phone || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Contacts</p>
+                    <p className="font-medium text-gray-900">{getAccountContacts(selectedAccount.accountId)}</p>
+                  </div>
+                  <div className="md:col-span-2">
+                    <p className="text-gray-500">Address</p>
+                    <p className="font-medium text-gray-900">
+                      {[
+                        selectedAccount.address?.street,
+                        selectedAccount.address?.city,
+                        selectedAccount.address?.state,
+                        selectedAccount.address?.zip,
+                        selectedAccount.address?.country,
+                      ].filter(Boolean).join(', ') || '-'}
+                    </p>
+                  </div>
+                </div>
+                {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => openEditDialog(selectedAccount)}>
+                    Edit
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => handleDeleteAccount(selectedAccount)}
+                    disabled={deletingAccountId === selectedAccount.accountId}
+                  >
+                    {deletingAccountId === selectedAccount.accountId ? 'Deleting...' : 'Delete'}
+                  </Button>
+                </div>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
         <Dialog
@@ -808,6 +944,10 @@ export default function Accounts() {
                           <Edit className="w-4 h-4" />
                           Edit
                         </DropdownMenuItem>
+                        <DropdownMenuItem className="gap-2" onClick={() => openDetailsDialog(account)}>
+                          <Eye className="w-4 h-4" />
+                          View Details
+                        </DropdownMenuItem>
                         <DropdownMenuItem className="gap-2">
                           <Users className="w-4 h-4" />
                           View Contacts
@@ -819,10 +959,11 @@ export default function Accounts() {
                         <DropdownMenuSeparator />
                         <DropdownMenuItem 
                           className="gap-2 text-red-600"
-                          onClick={() => deleteAccount(account.accountId)}
+                          onClick={() => handleDeleteAccount(account)}
+                          disabled={deletingAccountId === account.accountId}
                         >
                           <Trash2 className="w-4 h-4" />
-                          Delete
+                          {deletingAccountId === account.accountId ? 'Deleting...' : 'Delete'}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
