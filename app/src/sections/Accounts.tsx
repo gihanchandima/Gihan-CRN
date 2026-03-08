@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { gsap } from 'gsap';
 import { 
   Building2, 
@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/dialog';
 import { useCRM } from '@/contexts/CRMContext';
 import { useAuth } from '@/contexts/AuthContext';
+import type { Account } from '@/types';
 
 export default function Accounts() {
   const sectionRef = useRef<HTMLDivElement>(null);
@@ -57,7 +58,9 @@ export default function Accounts() {
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const [actionError, setActionError] = useState('');
   const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
-  const [selectedAccount, setSelectedAccount] = useState<(typeof accounts)[number] | null>(null);
+  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
+  const [accountList, setAccountList] = useState<Account[]>(accounts);
+  const [accountsLoadError, setAccountsLoadError] = useState('');
   const [formData, setFormData] = useState({
     companyName: '',
     industry: '',
@@ -91,7 +94,7 @@ export default function Accounts() {
     );
   }, []);
 
-  const filteredAccounts = accounts.filter(account => {
+  const filteredAccounts = accountList.filter(account => {
     const matchesSearch = 
       account.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       account.industry?.toLowerCase().includes(searchQuery.toLowerCase());
@@ -148,14 +151,18 @@ export default function Accounts() {
     return `https://${value}`;
   };
 
-  const resolveAccountApiUrl = (action: 'create' | 'update' | 'delete') => {
+  const resolveAccountApiUrl = (action: 'create' | 'update' | 'delete' | 'list') => {
     const configuredApiUrl = import.meta.env.VITE_ACCOUNTS_API_URL?.trim();
     if (!configuredApiUrl || configuredApiUrl.includes('/rest/v1')) {
+      if (action === 'list') return '/.netlify/functions/list-accounts';
       if (action === 'update') return '/.netlify/functions/update-account';
       if (action === 'delete') return '/.netlify/functions/delete-account';
       return '/.netlify/functions/create-account';
     }
 
+    if (action === 'list') {
+      return configuredApiUrl.replace(/\/create-account$/, '/list-accounts');
+    }
     if (action === 'update') {
       return configuredApiUrl.replace(/\/create-account$/, '/update-account');
     }
@@ -165,7 +172,87 @@ export default function Accounts() {
     return configuredApiUrl;
   };
 
-  const openEditDialog = (account: typeof accounts[number]) => {
+  const loadAccounts = useCallback(async () => {
+    setAccountsLoadError('');
+    try {
+      const response = await fetch(resolveAccountApiUrl('list'));
+      const raw = await response.text();
+      let result: unknown = null;
+      try {
+        result = raw ? JSON.parse(raw) : null;
+      } catch (_error) {
+        result = null;
+      }
+
+      if (!response.ok) {
+        const message =
+          typeof result === 'object' &&
+          result !== null &&
+          'error' in result &&
+          typeof (result as { error?: unknown }).error === 'string'
+            ? (result as { error: string }).error
+            : `Failed to load accounts (HTTP ${response.status}).`;
+        throw new Error(message);
+      }
+
+      if (
+        typeof result !== 'object' ||
+        result === null ||
+        !('ok' in result) ||
+        !(result as { ok?: boolean }).ok ||
+        !('accounts' in result) ||
+        !Array.isArray((result as { accounts?: unknown }).accounts)
+      ) {
+        throw new Error('Account list API returned an invalid response.');
+      }
+
+      const mapped = ((result as { accounts: Array<{
+        accountId: string;
+        companyName: string;
+        industry?: string;
+        size?: 'small' | 'medium' | 'enterprise';
+        website?: string;
+        phone?: string;
+        street?: string;
+        city?: string;
+        state?: string;
+        zip?: string;
+        country?: string;
+        ownerId: string;
+        createdAt: string;
+        updatedAt: string;
+      }> }).accounts).map((row) => ({
+        accountId: row.accountId,
+        companyName: row.companyName,
+        industry: row.industry || undefined,
+        size: row.size || undefined,
+        website: row.website || undefined,
+        phone: row.phone || undefined,
+        address: [row.street, row.city, row.state, row.zip, row.country].some(Boolean)
+          ? {
+              street: row.street || undefined,
+              city: row.city || undefined,
+              state: row.state || undefined,
+              zip: row.zip || undefined,
+              country: row.country || undefined,
+            }
+          : undefined,
+        ownerId: row.ownerId,
+        createdAt: new Date(row.createdAt),
+        updatedAt: new Date(row.updatedAt),
+      }));
+      setAccountList(mapped);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load accounts.';
+      setAccountsLoadError(message);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAccounts();
+  }, [loadAccounts]);
+
+  const openEditDialog = (account: Account) => {
     setEditingAccountId(account.accountId);
     setEditFormData({
       companyName: account.companyName,
@@ -183,7 +270,7 @@ export default function Accounts() {
     setIsEditDialogOpen(true);
   };
 
-  const openDetailsDialog = (account: typeof accounts[number]) => {
+  const openDetailsDialog = (account: Account) => {
     setSelectedAccount(account);
     setActionError('');
     setIsDetailsDialogOpen(true);
@@ -301,6 +388,7 @@ export default function Accounts() {
 
       resetForm();
       setIsCreateDialogOpen(false);
+      await loadAccounts();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save account.';
       setFormError(message);
@@ -416,6 +504,7 @@ export default function Accounts() {
 
       setIsEditDialogOpen(false);
       setEditingAccountId(null);
+      await loadAccounts();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update account.';
       setEditFormError(message);
@@ -424,7 +513,7 @@ export default function Accounts() {
     }
   };
 
-  const handleDeleteAccount = async (account: typeof accounts[number]) => {
+  const handleDeleteAccount = async (account: Account) => {
     if (deletingAccountId) return;
     const shouldDelete = window.confirm(`Delete account "${account.companyName}"?`);
     if (!shouldDelete) return;
@@ -461,6 +550,7 @@ export default function Accounts() {
       }
 
       deleteAccount(account.accountId);
+      setAccountList((prev) => prev.filter((item) => item.accountId !== account.accountId));
       if (selectedAccount?.accountId === account.accountId) {
         setIsDetailsDialogOpen(false);
         setSelectedAccount(null);
@@ -804,12 +894,12 @@ export default function Accounts() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border border-gray-100 p-4">
           <p className="text-sm text-gray-500">Total Accounts</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{accounts.length}</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1">{accountList.length}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-4">
           <p className="text-sm text-gray-500">Enterprise</p>
           <p className="text-2xl font-bold text-purple-600 mt-1">
-            {accounts.filter(a => a.size === 'enterprise').length}
+            {accountList.filter(a => a.size === 'enterprise').length}
           </p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-4">
@@ -853,6 +943,11 @@ export default function Accounts() {
       </div>
 
       {/* Accounts Table */}
+      {accountsLoadError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {accountsLoadError}
+        </div>
+      )}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <Table>
           <TableHeader>
