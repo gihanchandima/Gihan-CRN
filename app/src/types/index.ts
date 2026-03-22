@@ -6,6 +6,8 @@ export interface User {
   role: 'admin' | 'manager' | 'sales';
   teamId: string;
   avatar?: string;
+  phone?: string;
+  bio?: string;
   createdAt: Date;
   lastLogin: Date;
 }

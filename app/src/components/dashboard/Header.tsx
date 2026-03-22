@@ -27,7 +27,7 @@ interface HeaderProps {
 
 export default function Header({ sidebarCollapsed }: HeaderProps) {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { notifications } = useCRM();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -156,7 +156,13 @@ export default function Header({ sidebarCollapsed }: HeaderProps) {
                   Profile
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-red-600">
+                <DropdownMenuItem
+                  className="text-red-600"
+                  onClick={() => {
+                    logout();
+                    navigate('/');
+                  }}
+                >
                   Logout
                 </DropdownMenuItem>
               </DropdownMenuContent>

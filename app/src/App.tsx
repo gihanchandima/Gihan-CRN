@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from '@/contexts/AuthContext';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { CRMProvider } from '@/contexts/CRMContext';
+import AuthScreen from '@/components/auth/AuthScreen';
 import Sidebar from '@/components/dashboard/Sidebar';
 import Header from '@/components/dashboard/Header';
 import Dashboard from '@/sections/Dashboard';
@@ -16,7 +17,12 @@ import Workflows from '@/sections/Workflows';
 import Settings from '@/sections/Settings';
 
 function AppLayout() {
+  const { isAuthenticated } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  if (!isAuthenticated) {
+    return <AuthScreen />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

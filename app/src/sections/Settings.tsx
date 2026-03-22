@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { gsap } from 'gsap';
 import { 
   Settings as SettingsIcon,
   User,
+  Camera,
   Bell,
   Shield,
   Palette,
@@ -33,9 +34,17 @@ interface TabItem {
 
 export default function Settings() {
   const sectionRef = useRef<HTMLDivElement>(null);
-  const { user } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { user, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
   const [saved, setSaved] = useState(false);
+  const [profileName, setProfileName] = useState(user?.name ?? '');
+  const [profileEmail, setProfileEmail] = useState(user?.email ?? '');
+  const [profileAvatar, setProfileAvatar] = useState(user?.avatar ?? '');
+  const [profilePhone, setProfilePhone] = useState(user?.phone ?? '');
+  const [profileBio, setProfileBio] = useState(user?.bio ?? '');
+  const [photoError, setPhotoError] = useState('');
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
     if (!sectionRef.current) return;
@@ -45,7 +54,71 @@ export default function Settings() {
     );
   }, []);
 
+  useEffect(() => {
+    setProfileName(user?.name ?? '');
+    setProfileEmail(user?.email ?? '');
+    setProfileAvatar(user?.avatar ?? '');
+    setProfilePhone(user?.phone ?? '');
+    setProfileBio(user?.bio ?? '');
+  }, [user]);
+
+  const handlePhotoChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setPhotoError('Use a JPG, PNG, GIF, or WEBP image');
+      event.target.value = '';
+      return;
+    }
+
+    const maxSizeBytes = 2 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      setPhotoError('Photo must be smaller than 2MB');
+      event.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setProfileAvatar(reader.result);
+        setPhotoError('');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSave = () => {
+    if (!user) {
+      return;
+    }
+
+    const trimmedName = profileName.trim();
+    const trimmedEmail = profileEmail.trim().toLowerCase();
+
+    if (!trimmedName) {
+      setSaveError('Full name is required');
+      return;
+    }
+
+    if (!trimmedEmail) {
+      setSaveError('Email is required');
+      return;
+    }
+
+    setSaveError('');
+    updateUser({
+      ...user,
+      name: trimmedName,
+      email: trimmedEmail,
+      avatar: profileAvatar || user.avatar,
+      phone: profilePhone.trim(),
+      bio: profileBio.trim(),
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -107,31 +180,53 @@ export default function Settings() {
 
               <div className="flex items-center gap-6">
                 <img
-                  src={user?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.name}`}
+                  src={profileAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profileName || user?.name}`}
                   alt={user?.name}
                   className="w-20 h-20 rounded-full bg-gray-100"
                 />
                 <div>
-                  <Button variant="outline" className="gap-2">
-                    <User className="w-4 h-4" />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/webp"
+                    className="hidden"
+                    onChange={handlePhotoChange}
+                  />
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Camera className="w-4 h-4" />
                     Change Photo
                   </Button>
                   <p className="text-xs text-gray-500 mt-2">JPG, PNG or GIF. Max 2MB.</p>
+                  {photoError && (
+                    <p className="text-xs text-red-600 mt-2">{photoError}</p>
+                  )}
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                  <Input defaultValue={user?.name} />
+                  <Input value={profileName} onChange={(event) => setProfileName(event.target.value)} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                  <Input defaultValue={user?.email} type="email" />
+                  <Input
+                    value={profileEmail}
+                    onChange={(event) => setProfileEmail(event.target.value)}
+                    type="email"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                  <Input placeholder="+1 (555) 000-0000" />
+                  <Input
+                    value={profilePhone}
+                    onChange={(event) => setProfilePhone(event.target.value)}
+                    placeholder="+1 (555) 000-0000"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
@@ -142,13 +237,34 @@ export default function Settings() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
                 <textarea 
+                  value={profileBio}
+                  onChange={(event) => setProfileBio(event.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300 min-h-[100px]"
                   placeholder="Tell us about yourself..."
                 />
               </div>
 
+              {saveError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {saveError}
+                </div>
+              )}
+
               <div className="flex items-center justify-end gap-3 pt-4 border-t">
-                <Button variant="outline">Cancel</Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setProfileName(user?.name ?? '');
+                    setProfileEmail(user?.email ?? '');
+                    setProfileAvatar(user?.avatar ?? '');
+                    setProfilePhone(user?.phone ?? '');
+                    setProfileBio(user?.bio ?? '');
+                    setPhotoError('');
+                    setSaveError('');
+                  }}
+                >
+                  Cancel
+                </Button>
                 <Button 
                   onClick={handleSave}
                   className={cn(
