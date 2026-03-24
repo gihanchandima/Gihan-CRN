@@ -172,6 +172,42 @@ export default function Accounts() {
     return configuredApiUrl;
   };
 
+  const mapAccountRows = (rows: Array<{
+    accountId: string;
+    companyName: string;
+    industry?: string;
+    size?: 'small' | 'medium' | 'enterprise';
+    website?: string;
+    phone?: string;
+    street?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    country?: string;
+    ownerId: string;
+    createdAt: string;
+    updatedAt: string;
+  }>) => rows.map((row) => ({
+    accountId: row.accountId,
+    companyName: row.companyName,
+    industry: row.industry || undefined,
+    size: row.size || undefined,
+    website: row.website || undefined,
+    phone: row.phone || undefined,
+    address: [row.street, row.city, row.state, row.zip, row.country].some(Boolean)
+      ? {
+          street: row.street || undefined,
+          city: row.city || undefined,
+          state: row.state || undefined,
+          zip: row.zip || undefined,
+          country: row.country || undefined,
+        }
+      : undefined,
+    ownerId: row.ownerId,
+    createdAt: new Date(row.createdAt),
+    updatedAt: new Date(row.updatedAt),
+  }));
+
   const loadAccounts = useCallback(async () => {
     setAccountsLoadError('');
     try {
@@ -195,18 +231,22 @@ export default function Accounts() {
         throw new Error(message);
       }
 
-      if (
-        typeof result !== 'object' ||
-        result === null ||
-        !('ok' in result) ||
-        !(result as { ok?: boolean }).ok ||
-        !('accounts' in result) ||
-        !Array.isArray((result as { accounts?: unknown }).accounts)
-      ) {
+      const accountRows = Array.isArray(result)
+        ? result
+        : (
+            typeof result === 'object' &&
+            result !== null &&
+            'accounts' in result &&
+            Array.isArray((result as { accounts?: unknown }).accounts)
+          )
+          ? (result as { accounts: unknown[] }).accounts
+          : null;
+
+      if (!accountRows) {
         throw new Error('Account list API returned an invalid response.');
       }
 
-      const mapped = ((result as { accounts: Array<{
+      setAccountList(mapAccountRows(accountRows as Array<{
         accountId: string;
         companyName: string;
         industry?: string;
@@ -221,27 +261,7 @@ export default function Accounts() {
         ownerId: string;
         createdAt: string;
         updatedAt: string;
-      }> }).accounts).map((row) => ({
-        accountId: row.accountId,
-        companyName: row.companyName,
-        industry: row.industry || undefined,
-        size: row.size || undefined,
-        website: row.website || undefined,
-        phone: row.phone || undefined,
-        address: [row.street, row.city, row.state, row.zip, row.country].some(Boolean)
-          ? {
-              street: row.street || undefined,
-              city: row.city || undefined,
-              state: row.state || undefined,
-              zip: row.zip || undefined,
-              country: row.country || undefined,
-            }
-          : undefined,
-        ownerId: row.ownerId,
-        createdAt: new Date(row.createdAt),
-        updatedAt: new Date(row.updatedAt),
-      }));
-      setAccountList(mapped);
+      }>));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load accounts.';
       setAccountsLoadError(message);

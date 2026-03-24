@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { gsap } from 'gsap';
 import { 
   Plus, 
@@ -39,16 +39,28 @@ import {
 } from '@/components/ui/dialog';
 import StatusBadge from '@/components/custom/StatusBadge';
 import { useCRM } from '@/contexts/CRMContext';
+import { useAuth } from '@/contexts/AuthContext';
 import type { DealStage } from '@/types';
 
 const stageColumns: DealStage[] = ['prospecting', 'qualification', 'proposal', 'negotiation', 'closed-won', 'closed-lost'];
 
 export default function Deals() {
   const sectionRef = useRef<HTMLDivElement>(null);
-  const { deals, accounts, deleteDeal } = useCRM();
+  const { user } = useAuth();
+  const { deals, accounts, addDeal, deleteDeal } = useCRM();
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('kanban');
   const [selectedStage, setSelectedStage] = useState<DealStage | 'all'>('all');
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [formData, setFormData] = useState({
+    title: '',
+    accountId: '',
+    value: '',
+    stage: 'prospecting' as DealStage,
+    probability: '25',
+    expectedCloseDate: '',
+  });
 
   useEffect(() => {
     if (!sectionRef.current) return;
@@ -85,6 +97,64 @@ export default function Deals() {
     return colors[stage];
   };
 
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      accountId: '',
+      value: '',
+      stage: 'prospecting',
+      probability: '25',
+      expectedCloseDate: '',
+    });
+    setFormError('');
+  };
+
+  const handleCreateDeal = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const title = formData.title.trim();
+    const value = Number(formData.value);
+    const probability = Number(formData.probability);
+
+    if (!title) {
+      setFormError('Deal title is required.');
+      return;
+    }
+
+    if (!formData.accountId) {
+      setFormError('Select an account.');
+      return;
+    }
+
+    if (!Number.isFinite(value) || value <= 0) {
+      setFormError('Enter a valid deal value.');
+      return;
+    }
+
+    if (!Number.isFinite(probability) || probability < 0 || probability > 100) {
+      setFormError('Probability must be between 0 and 100.');
+      return;
+    }
+
+    if (!formData.expectedCloseDate) {
+      setFormError('Expected close date is required.');
+      return;
+    }
+
+    addDeal({
+      title,
+      accountId: formData.accountId,
+      value,
+      stage: formData.stage,
+      probability,
+      expectedCloseDate: new Date(formData.expectedCloseDate),
+      ownerId: user?.uid ?? 'user-1',
+    });
+
+    resetForm();
+    setIsCreateDialogOpen(false);
+  };
+
   return (
     <div ref={sectionRef} className="p-6 space-y-6" style={{ opacity: 0 }}>
       {/* Header */}
@@ -114,7 +184,13 @@ export default function Deals() {
               List
             </button>
           </div>
-          <Dialog>
+          <Dialog
+            open={isCreateDialogOpen}
+            onOpenChange={(open) => {
+              setIsCreateDialogOpen(open);
+              if (!open) resetForm();
+            }}
+          >
             <DialogTrigger asChild>
               <Button className="bg-blue-600 hover:bg-blue-700 gap-2">
                 <Plus className="w-4 h-4" />
@@ -125,9 +201,90 @@ export default function Deals() {
               <DialogHeader>
                 <DialogTitle>Add New Deal</DialogTitle>
               </DialogHeader>
-              <div className="p-4 text-center text-gray-500">
-                Deal creation form coming soon...
-              </div>
+              <form onSubmit={handleCreateDeal} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Deal Title *</label>
+                    <Input
+                      value={formData.title}
+                      onChange={(event) => setFormData(prev => ({ ...prev, title: event.target.value }))}
+                      placeholder="Enterprise CRM Renewal"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Account *</label>
+                    <select
+                      value={formData.accountId}
+                      onChange={(event) => setFormData(prev => ({ ...prev, accountId: event.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="">Select account</option>
+                      {accounts.map((account) => (
+                        <option key={account.accountId} value={account.accountId}>
+                          {account.companyName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Stage *</label>
+                    <select
+                      value={formData.stage}
+                      onChange={(event) => setFormData(prev => ({ ...prev, stage: event.target.value as DealStage }))}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    >
+                      {stageColumns.map((stage) => (
+                        <option key={stage} value={stage}>
+                          {stage.replace('-', ' ')}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Deal Value *</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.value}
+                      onChange={(event) => setFormData(prev => ({ ...prev, value: event.target.value }))}
+                      placeholder="25000"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Probability % *</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={formData.probability}
+                      onChange={(event) => setFormData(prev => ({ ...prev, probability: event.target.value }))}
+                      placeholder="25"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Expected Close Date *</label>
+                    <Input
+                      type="date"
+                      value={formData.expectedCloseDate}
+                      onChange={(event) => setFormData(prev => ({ ...prev, expectedCloseDate: event.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                {formError && (
+                  <p className="text-sm text-red-600">{formError}</p>
+                )}
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
+                    Create Deal
+                  </Button>
+                </div>
+              </form>
             </DialogContent>
           </Dialog>
         </div>
